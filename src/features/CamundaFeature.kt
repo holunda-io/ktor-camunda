@@ -1,12 +1,10 @@
 package io.holunda.camunda.features
 
-import io.ktor.application.Application
 import io.ktor.application.ApplicationCallPipeline
 import io.ktor.application.ApplicationFeature
 import io.ktor.util.AttributeKey
 import mu.KLogging
 import org.camunda.bpm.engine.ProcessEngine
-import org.camunda.bpm.engine.RepositoryService
 import org.camunda.bpm.engine.delegate.ExecutionListener
 import org.camunda.bpm.engine.delegate.JavaDelegate
 import org.camunda.bpm.engine.delegate.TaskListener
@@ -16,8 +14,10 @@ import org.camunda.bpm.engine.impl.cfg.StandaloneInMemProcessEngineConfiguration
 import org.camunda.bpm.engine.impl.persistence.StrongUuidGenerator
 import org.camunda.bpm.engine.repository.Deployment
 import org.reflections.Reflections
-import java.io.File
-import kotlin.reflect.full.companionObject
+import org.reflections.scanners.ResourcesScanner
+import org.reflections.util.ClasspathHelper
+import org.reflections.util.ConfigurationBuilder
+import java.util.regex.Pattern
 
 
 class CamundaKtorFeature {
@@ -36,18 +36,11 @@ class CamundaKtorFeature {
             val configuration = Configuration().apply(configure)
 
             val engineConfiguration = StandaloneInMemProcessEngineConfiguration()
-
+            engineConfiguration.isJobExecutorActivate = configuration.isJobExecutorActivate
+            engineConfiguration.idGenerator = StrongUuidGenerator()
             registerDelegates(engineConfiguration)
 
-            engineConfiguration.isJobExecutorActivate = configuration.isJobExecutorActivate
-
-            engineConfiguration.idGenerator = StrongUuidGenerator()
-
-            val processEngine = engineConfiguration.buildProcessEngine()
-
-            deployment(processEngine.repositoryService)
-
-            return processEngine
+            return engineConfiguration.buildProcessEngine().also { deployment(it) }
         }
 
         private fun registerDelegates(processEngineConfiguration: ProcessEngineConfigurationImpl) {
@@ -57,35 +50,40 @@ class CamundaKtorFeature {
                 processEngineConfiguration.beans = mutableMapOf()
             }
 
-            reflections.getSubTypesOf(JavaDelegate::class.java).forEach { it.register(processEngineConfiguration) }
-            reflections.getSubTypesOf(TaskListener::class.java).forEach { it.register(processEngineConfiguration) }
-            reflections.getSubTypesOf(ExecutionListener::class.java).forEach { it.register(processEngineConfiguration) }
-            reflections.getSubTypesOf(VariableListener::class.java).forEach { it.register(processEngineConfiguration) }
+            processEngineConfiguration.beans.putAll(reflections.getSubTypesOf(JavaDelegate::class.java)
+                .map {
+                    logger.debug { "Register '${it.simpleName.decapitalize()}' as camunda task listener!" }
+                    Pair(it.simpleName.decapitalize(), it.kotlin.objectInstance)
+                }.toMap())
+
+            processEngineConfiguration.beans.putAll(reflections.getSubTypesOf(TaskListener::class.java)
+                .map {
+                    logger.debug { "Register '${it.simpleName.decapitalize()}' as camunda task listener!" }
+                    Pair(it.simpleName.decapitalize(), it.kotlin.objectInstance)
+                }.toMap())
+
+            processEngineConfiguration.beans.putAll(reflections.getSubTypesOf(ExecutionListener::class.java)
+                .map {
+                    logger.debug { "Register '${it.simpleName.decapitalize()}' as camunda execution listener!" }
+                    Pair(it.simpleName.decapitalize(), it.kotlin.objectInstance)
+                }.toMap())
+
+            processEngineConfiguration.beans.putAll(reflections.getSubTypesOf(VariableListener::class.java)
+                .map {
+                    logger.debug { "Register '${it.simpleName.decapitalize()}' as camunda variable listener!" }
+                    Pair(it.simpleName.decapitalize(), it.kotlin.objectInstance)
+                }.toMap())
         }
 
-        private fun deployment(repositoryService: RepositoryService): Deployment {
-            val deployment = repositoryService.createDeployment()
-            scanForBpmnFiles().forEach { file -> deployment.addClasspathResource(file) }
+        private fun deployment(processEngine: ProcessEngine): Deployment {
+            val deployment = processEngine.repositoryService.createDeployment()
+            Reflections(ConfigurationBuilder()
+                .setUrls(ClasspathHelper.forPackage(""))
+                .setScanners(ResourcesScanner()))
+                .getResources(Pattern.compile(".*\\.bpmn"))
+                .forEach { file -> deployment.addClasspathResource(file) }
             return deployment.deploy()
         }
-
-        private fun scanForBpmnFiles(): List<String> = Application::class.java.classLoader.getResources("").toList()
-            .filter { it.protocol == "file" }
-            .map { File(it.toURI()) }
-            .filter { it.isDirectory }
-            .map { dir ->
-                dir.listFiles()!!
-                    .filter { it.name.endsWith(".bpmn") }
-                    .map { it.name }
-            }
-            .toList()
-            .flatten()
     }
 
-
-}
-
-private fun <JavaDelegate> Class<JavaDelegate>.register(processEngineConfiguration: ProcessEngineConfigurationImpl) {
-    CamundaKtorFeature.logger.debug { "Register '${this.javaClass.simpleName.decapitalize()}' as camunda java delegate!" }
-    processEngineConfiguration.beans[this.javaClass.simpleName.decapitalize()] = this.javaClass.kotlin.companionObject
 }

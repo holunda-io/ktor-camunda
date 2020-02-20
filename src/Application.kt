@@ -32,14 +32,15 @@ fun Application.module(@Suppress("UNUSED_PARAMETER") testing: Boolean = false) {
         isJobExecutorActivate = true
     }
 
+    // Just as demo, start some processes:
     val process = engine.runtimeService.startProcessInstanceByKey("ktor-process")
-    logger.info("started process: " + process.processInstanceId)
+    logger.info("Started process: " + process.processInstanceId)
 
     val process2 = engine.runtimeService.startProcessInstanceByKey("ktor-process")
-    logger.info("started process2: " + process2.processInstanceId)
+    logger.info("Started process: " + process2.processInstanceId)
 
+    // Setup routing to just start a process
     routing {
-
         route("process") {
             get("/startByKey/{key}") {
                 val processInstance = engine.runtimeService.startProcessInstanceByKey(call.parameters["key"])
