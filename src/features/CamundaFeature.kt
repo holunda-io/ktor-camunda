@@ -78,8 +78,9 @@ class CamundaKtorFeature {
         private fun deployment(processEngine: ProcessEngine): Deployment {
             val deployment = processEngine.repositoryService.createDeployment()
             Reflections(ConfigurationBuilder()
-                .setUrls(ClasspathHelper.forPackage(""))
-                .setScanners(ResourcesScanner()))
+                    .setUrls(ClasspathHelper.forResource("processes"))
+                    .setScanners(ResourcesScanner())
+                 )
                 .getResources(Pattern.compile(".*\\.bpmn"))
                 .forEach { file -> deployment.addClasspathResource(file) }
             return deployment.deploy()

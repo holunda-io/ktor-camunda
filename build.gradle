@@ -5,11 +5,13 @@ buildscript {
     
     dependencies {
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath "com.github.jengelman.gradle.plugins:shadow:5.2.0"
     }
 }
 
 apply plugin: 'kotlin'
 apply plugin: 'application'
+apply plugin: "com.github.johnrengelman.shadow"
 
 group 'io.holunda.camunda'
 version '0.0.1'
@@ -33,7 +35,7 @@ dependencies {
     implementation "org.camunda.bpm:camunda-engine"
     implementation "com.fasterxml.uuid:java-uuid-generator:3.1.0"
     implementation "org.reflections:reflections:0.9.12"
-    runtime "com.h2database:h2:1.4.200"
+    compile "com.h2database:h2:1.4.200"
 
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
     implementation "io.ktor:ktor-server-netty:$ktor_version"
@@ -45,4 +47,11 @@ dependencies {
     implementation "io.ktor:ktor-client-apache:$ktor_version"
     implementation 'io.github.microutils:kotlin-logging:1.7.7'
     testImplementation "io.ktor:ktor-server-tests:$ktor_version"
+}
+
+shadowJar {
+    baseName = "ktor-camunda"
+    classifier = null
+    version = null
+    mergeServiceFiles()
 }
